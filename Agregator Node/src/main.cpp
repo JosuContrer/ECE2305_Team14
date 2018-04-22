@@ -13,8 +13,17 @@
 #include <SPI.h>
 //All pins easy accesses
 #include "globalPins.h"
-//Other classes
 
+/** Intructions for code:
+ * Plug in the sensor node first and then the agreggator node. Hit the Reset button on the agregator node
+ * The first itteration for the agregator node is just seeting up everyhting
+ * Remember to set the 'maxSensorNodes' variable to the amount of sensor nodes in the network
+ *
+ */
+//-----------------------Set variables----------------------------
+int maxSensorNodes = 3; //IMPORTANT: Set according to how many sensor nodes there are
+int transmissionIt = 3; //Set according to the number of transmission itterations (when agrregator calling a sensor node)
+//----------------------------------------------------------------
 
 // Create Amplitude Shift Keying Object
 RH_ASK rf_driver;
@@ -35,14 +44,27 @@ int ind1;
 int ind2;
 int ind3;
 int ind4;
-const char *msg;
+static char *msg;
 
-//Other varibales
-int count = 0;
-enum State {TRANSMITTINGNODENUM,  RECIEVINGDATA} state;
+//Data Recieveing Variables
+uint8_t buf[9];
+uint8_t buflen;
+bool setWarning;
+int amountLoop = 0;
+
+//TDMA variables
+char nodeNumber = "0"; //only to intialize
+int nodeInc = 0;
+int nCount = 0;
+
+
+//Other variables
+long int count = 0;
+enum State {TRANSMITTINGNODENUM,  RECIEVINGDATA, NEXTNODE} state;
 
 void setup()
 {
+  Serial.println("Initializing aggregator node...");
   // Initialize ASK Object
   rf_driver.init();
   //Setup Reciver LED
@@ -58,15 +80,16 @@ void loop()
 {
   switch(state){
      case TRANSMITTINGNODENUM:
+      //Case to transmit node number that aggrgator wants to "hear"
       digitalWrite(LED_TRANSMITTING, HIGH);
-      Serial.println("Transmitting Node Number:");
-      msg = "1";
+      Serial.println("Transmitting Node Number: ");
+      msg = nodeNumber;
       Serial.println(msg);
       rf_driver.send((uint8_t *)msg, strlen(msg));
       rf_driver.waitPacketSent();
       digitalWrite(LED_TRANSMITTING, LOW);
       delay(1000);
-      if(count == 3){
+      if(count == transmissionIt){
         count = 0;
         state = RECIEVINGDATA;
       }
@@ -74,34 +97,54 @@ void loop()
       break;
 
     case RECIEVINGDATA:
-      //Extra code not needed
-      // if(count == 29000){
-      //   count = 0;
-      //   Serial.println("Waiting to Recieve Data...");
-      //   Serial.println("");
-      // }
-      // count++;
-
+      //NOTE: Here we implement a time slot for each sensor (TDMA)
       // Set buffer to size of expected message
       // Antenna Test successful,
-      uint8_t buf[9];
-      uint8_t buflen = sizeof(buf);
+      buflen = sizeof(buf);
       recievedData = (char*)buf;
       // Check if received packet is correct size
       if (rf_driver.recv(buf, &buflen))
       {
-        digitalWrite(LED_RECIEVING, HIGH);
-        Serial.println("Recieveing Data...");
-        processData(recievedData);
-        digitalWrite(LED_RECIEVING,LOW);
-        Serial.println(count);
+        if(amountLoop == 2){
+          digitalWrite(LED_RECIEVING, HIGH);
+          Serial.println("Recieveing Data...");
+          processData(recievedData);
+          digitalWrite(LED_RECIEVING,LOW);
+          Serial.println(count);
+          amountLoop = 0;
+          count = 0;
+          state = NEXTNODE;
+        }
+        amountLoop++; //has to loop twice because first itteration dosen't get values
         count = 0;
-        //state = TRANSMITTINGNODENUM;
       }
-      count ++;
+      // In order to break if a sensor dosen't respond after N amount of time NOTE: have to determine value with 3 sensors
+      if(count > 100000){
+        setWarning = true;
+        Serial.println("");
+        Serial.print("WARNING: Node did not respond, node number:");
+        Serial.println((char*)nodeNumber);
+        Serial.println("");
+        Serial.println("");
+        count = 0;
+        state = NEXTNODE;
+      }
+      count ++; //in order to be able to break from this case
       digitalWrite(LED_RECIEVING,LOW);
-      //NOTE: create a counter non blocking code to know when to chnage state
-      //Takes arounf 9600-9700 to get a succesfull message  (sometimes 10000 - 20000)
+      break;
+
+    case NEXTNODE:
+      //Wait for the sensor node to reset itself
+      if(nCount > 4000){
+        nCount = 0;
+        Serial.println("Waiting for next node...");
+        if(nodeInc > maxSensorNodes){
+          nodeInc = 0;
+        }
+        itoa(nodeInc++,nodeNumber,10); //converts int to char. Max is 9.
+        state = TRANSMITTINGNODENUM;
+      }
+      nCount++;
       break;
     }
 
@@ -126,7 +169,7 @@ bool processData(String dataR){
 
   Serial.println("");
   // Message received with valid checksum
-  Serial.println("Message Received: ");
+  Serial.println("*Message Received: ");
   //Serial.println((char*)buf);
   Serial.print("Sensor Name: ");
   Serial.println(sensorNodeName);
