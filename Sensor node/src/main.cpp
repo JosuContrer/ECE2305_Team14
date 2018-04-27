@@ -21,7 +21,7 @@ Contibutors Fivos, Anastasia, John
  * Remember to set the 'nodeID' variable with the ID number of the sensor
  */
 //-----------------------Set variables----------------------------
-char *nodeID = "1"; //Set this value to match the Sensor ID number
+int nodeID = 3; //Set this value to match the Sensor ID number
 
 //----------------------------------------------------------------
 
@@ -36,6 +36,7 @@ static char *msg;
 uint8_t buflen;
 String recievedData;
 enum State {LISTENING,TRANSMITTINGDATA} state;
+bool notBefore = true;
 
 //Prototypes
 String concatSensorReadings(String nanoName, String oneS, String twoS, String threeS);
@@ -70,7 +71,7 @@ void loop()
       if(count == 18000){
         count = 0;
         Serial.print("Sensor Node ");
-        Serial.print((char*)nodeID);
+        Serial.print(nodeID);
         Serial.println(" Listening...;)");
         Serial.println("");
       }
@@ -84,15 +85,19 @@ void loop()
       if (rf_driver.recv(buf, &buflen))
       {
         recievedData = (char*)buf;
+        int work = recievedData.toInt();
         count = 0;
         //digitalWrite(LED_RECIEVING, HIGH);
         Serial.println("Authenticating Number...");
-        if(recievedData.equals(nodeID)){ //set nodeID in 'set variables'
-          Serial.println(recievedData);
+        if(work == nodeID && notBefore){ //set nodeID in 'set variables'
+          Serial.println(work);
+          notBefore = false;
           state = TRANSMITTINGDATA;
         }else{
+          digitalWrite(LED_RECIEVING, HIGH);
           Serial.print("Not me... it is: ");
-          Serial.println(recievedData);
+          Serial.println(work);
+          notBefore = true;
         }
       }
       digitalWrite(LED_RECIEVING,LOW);
@@ -108,11 +113,12 @@ void loop()
       rf_driver.waitPacketSent();
       digitalWrite(LED_TRANSMITTING, LOW);
       delay(1000);
+      //state = LISTENING;
       //TDMA- have to take into account the above delay
-      if(count > 3){
+     if(count >= 0){
         count = 0;
-        state = LISTENING;
-      }
+         state = LISTENING;
+       }
       count++;
       break;
   }
@@ -121,7 +127,10 @@ void loop()
 //*******************************************************************
 //*******************************************************************
 //*******************************************************************
-//*****************************Functions*****************************
+//*****************************FUNCTIONS*****************************
+//*******************************************************************
+//*******************************************************************
+//*******************************************************************
 
 //Packages up the data recieved by concatenating the data and adding overhead
 String concatSensorReadings(String nanoName, String oneS, String twoS, String threeS){

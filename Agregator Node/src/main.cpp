@@ -28,7 +28,7 @@ int transmissionIt = 3; //Set according to the number of transmission itteration
 // Create Amplitude Shift Keying Object
 RH_ASK rf_driver;
 
-// Fucntion Prototypes
+// Function Prototypes
 bool processData(String dataR);
 void printLoadingMessages(String message);
 void testAgreggator();
@@ -39,6 +39,7 @@ String sensorNodeName;
 String sensor1;
 String sensor2;
 String sensor3;
+
 //Location Variables
 int ind1;
 int ind2;
@@ -85,10 +86,12 @@ void loop()
       Serial.println("Transmitting Node Number: ");
       msg = nodeNumber;
       Serial.println(msg);
+      //Send ID name (node number) message to listening nodes
       rf_driver.send((uint8_t *)msg, strlen(msg));
       rf_driver.waitPacketSent();
       digitalWrite(LED_TRANSMITTING, LOW);
       delay(1000);
+      //Transmission itterations in order for sensor nodes to have time to recieve ID number and then start transmitting
       if(count == transmissionIt){
         count = 0;
         state = RECIEVINGDATA;
@@ -103,23 +106,27 @@ void loop()
       buflen = sizeof(buf);
       recievedData = (char*)buf;
       // Check if received packet is correct size
-      if (rf_driver.recv(buf, &buflen))
+      if (rf_driver.recv(buf, &buflen) )
       {
-        if(amountLoop == 2){
+        processData(recievedData);
+        //make sure the message recieved is correct
+        if(amountLoop >= 1){
           digitalWrite(LED_RECIEVING, HIGH);
           Serial.println("Recieveing Data...");
-          processData(recievedData);
+          //processes the data recieved by the aggregator node and separates it
+          //if(processData(recievedData)){
           digitalWrite(LED_RECIEVING,LOW);
           Serial.println(count);
           amountLoop = 0;
           count = 0;
           state = NEXTNODE;
+        //}
         }
         amountLoop++; //has to loop twice because first itteration dosen't get values
-        count = 0;
+        //count = 0;
       }
-      // In order to break if a sensor dosen't respond after N amount of time NOTE: have to determine value with 3 sensors
-      if(count > 100000){
+      // In order to break if a sensor dosen't respond after N amount of time NOTE: have to determine value with N sensors
+      if(count > 150000){
         setWarning = true;
         Serial.println("");
         Serial.print("WARNING: Node did not respond, node number:");
@@ -135,7 +142,7 @@ void loop()
 
     case NEXTNODE:
       //Wait for the sensor node to reset itself
-      if(nCount > 4000){
+      if(nCount > 20000){
         nCount = 0;
         Serial.println("Waiting for next node...");
         if(nodeInc > maxSensorNodes){
@@ -153,9 +160,15 @@ void loop()
 //*******************************************************************
 //*******************************************************************
 //*******************************************************************
-//*****************************Functions*****************************
+//*****************************FUNCTIONS*****************************
+//*******************************************************************
+//*******************************************************************
+//*******************************************************************
 
-//Fucntion that processes the data recieved form a single sensor module
+/**Fucntion that processes the data recieved form a single sensor module
+* @param dataR String with all the data to be separated (has to be lenght of 9 only)
+* @return boolen True if the message has been decoded completely
+*/
 bool processData(String dataR){
   Serial.println("Processing Data Recieved...");
   ind1 = dataR.indexOf(',');                   //finds location of first ,
@@ -186,8 +199,9 @@ bool processData(String dataR){
   return true;
 }
 
-
-//Function just in case something breaks and we need to check if it is hardware
+/**Function just in case something breaks and we need to check if it is hardware
+ * @method testAgreggator
+ */
 void testAgreggator(){
   if(count == 18000){
     count = 0;
@@ -210,6 +224,7 @@ void testAgreggator(){
   }
   digitalWrite(LED_RECIEVING,LOW);
 }
+
 //fucntion ideas-----------
 //Fucntion that takes parmaters of all the nodes and stroes them to read them later
 //store_data(String rSensorName, String rSensor1, String rSensor2, String rSensor3);
