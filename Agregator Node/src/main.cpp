@@ -13,6 +13,13 @@
 #include <SPI.h>
 //All pins easy accesses
 #include "globalPins.h"
+//Web layer
+#include <BlynkSimpleStream.h>
+//Auth Token for app connection
+char auth[] = "b57790fd86c647639f00485878139be8";
+
+// Attach virtual terminal terminal to Virtual Pin V1
+WidgetTerminal terminal(V1);
 
 /** Intructions for code:
  * Plug in the sensor node first and then the agreggator node. Hit the Reset button on the agregator node
@@ -21,8 +28,8 @@
  *
  */
 //-----------------------Set variables----------------------------
-int maxSensorNodes = 3; //IMPORTANT: Set according to how many sensor nodes there are
-int transmissionIt = 3; //Set according to the number of transmission itterations (when agrregator calling a sensor node)
+int maxSensorNodes = 2; //IMPORTANT: Set according to how many sensor nodes there are
+int transmissionIt = 2; //Set according to the number of transmission itterations (when agrregator calling a sensor node)
 //----------------------------------------------------------------
 
 // Create Amplitude Shift Keying Object
@@ -32,6 +39,8 @@ RH_ASK rf_driver;
 bool processData(String dataR);
 void printLoadingMessages(String message);
 void testAgreggator();
+void saveData();
+void printWeb();
 
 //String Variables
 String recievedData;
@@ -58,34 +67,42 @@ char nodeNumber = "0"; //only to intialize
 int nodeInc = 0;
 int nCount = 0;
 
+//Web layer Variables
+String dataBuffer[5];
 
 //Other variables
 long int count = 0;
-enum State {TRANSMITTINGNODENUM,  RECIEVINGDATA, NEXTNODE} state;
+enum State {TRANSMITTINGNODENUM,  RECIEVINGDATA, NEXTNODE, WEBLAYER} state;
 
 void setup()
 {
-  Serial.println("Initializing aggregator node...");
+  //terminal.println("Initializing aggregator node...");
   // Initialize ASK Object
   rf_driver.init();
   //Setup Reciver LED
   pinMode(LED_RECIEVING, OUTPUT);
   pinMode(LED_TRANSMITTING, OUTPUT);
-  // Setup Serial Monitor
+  // Setup terminal Monitor
   Serial.begin(9600);
+  Blynk.begin(Serial, auth);
+  terminal.println(F("Blynk v" BLYNK_VERSION ": Device started"));
+terminal.println(F("-------------"));
+terminal.flush();
   //Set State
   state = TRANSMITTINGNODENUM;
 }
 
 void loop()
 {
+  Blynk.run();
+
   switch(state){
      case TRANSMITTINGNODENUM:
       //Case to transmit node number that aggrgator wants to "hear"
       digitalWrite(LED_TRANSMITTING, HIGH);
-      Serial.println("Transmitting Node Number: ");
-      msg = nodeNumber;
-      Serial.println(msg);
+      //terminal.println("Transmitting Node Number: ");
+      msg = "1";
+      //terminal.println(msg);
       //Send ID name (node number) message to listening nodes
       rf_driver.send((uint8_t *)msg, strlen(msg));
       rf_driver.waitPacketSent();
@@ -112,11 +129,13 @@ void loop()
         //make sure the message recieved is correct
         if(amountLoop >= 1){
           digitalWrite(LED_RECIEVING, HIGH);
-          Serial.println("Recieveing Data...");
+          //Save data form the transmission
+          saveData();
+          terminal.println("Recieveing Data...");
           //processes the data recieved by the aggregator node and separates it
           //if(processData(recievedData)){
           digitalWrite(LED_RECIEVING,LOW);
-          Serial.println(count);
+          //terminal.println(count);
           amountLoop = 0;
           count = 0;
           state = NEXTNODE;
@@ -128,11 +147,11 @@ void loop()
       // In order to break if a sensor dosen't respond after N amount of time NOTE: have to determine value with N sensors
       if(count > 150000){
         setWarning = true;
-        Serial.println("");
-        Serial.print("WARNING: Node did not respond, node number:");
-        Serial.println((char*)nodeNumber);
-        Serial.println("");
-        Serial.println("");
+        terminal.println("");
+        terminal.print("WARNING: Node did not respond, node number:");
+        terminal.println((char*)nodeNumber);
+        terminal.println("");
+        terminal.println("");
         count = 0;
         state = NEXTNODE;
       }
@@ -144,14 +163,23 @@ void loop()
       //Wait for the sensor node to reset itself
       if(nCount > 20000){
         nCount = 0;
-        Serial.println("Waiting for next node...");
+        terminal.println("Waiting for next node...");
+        //Loop on max amount of nodes (reset to zero when max is reached)
         if(nodeInc > maxSensorNodes){
           nodeInc = 0;
+          state = WEBLAYER;
+          break;
         }
         itoa(nodeInc++,nodeNumber,10); //converts int to char. Max is 9.
+        terminal.println(nodeNumber);
         state = TRANSMITTINGNODENUM;
       }
       nCount++;
+      break;
+
+    case WEBLAYER:
+      printWeb();
+      state = TRANSMITTINGNODENUM;
       break;
     }
 
@@ -170,7 +198,7 @@ void loop()
 * @return boolen True if the message has been decoded completely
 */
 bool processData(String dataR){
-  Serial.println("Processing Data Recieved...");
+  terminal.println("Processing Data Recieved...");
   ind1 = dataR.indexOf(',');                   //finds location of first ,
   sensorNodeName = dataR.substring(0, ind1);   //captures first data String
   ind2 = dataR.indexOf(',', ind1+1 );          //finds location of second ,
@@ -180,23 +208,59 @@ bool processData(String dataR){
   ind4 = dataR.indexOf(',', ind3+1 );
   sensor3 = dataR.substring(ind3+1, ind4);            //captures remain part of data after last ,
 
-  Serial.println("");
+  terminal.println("");
   // Message received with valid checksum
-  Serial.println("*Message Received: ");
-  //Serial.println((char*)buf);
-  Serial.print("Sensor Name: ");
-  Serial.println(sensorNodeName);
-  Serial.print("Sensor1: ");
-  Serial.println(sensor1);
-  Serial.print("Sensor2: ");
-  Serial.println(sensor2);
-  Serial.print("Sensor3: ");
-  Serial.println(sensor3);
-  Serial.println("");
-  Serial.println("Done processing...");
-  Serial.println("");
-  Serial.println("");
+  terminal.println("*Message Received: ");
+  //terminal.println((char*)buf);
+  terminal.print("Sensor Name: ");
+  terminal.println(sensorNodeName);
+  terminal.print("Sensor1: ");
+  terminal.println(sensor1);
+  terminal.print("Sensor2: ");
+  terminal.println(sensor2);
+  terminal.print("Sensor3: ");
+  terminal.println(sensor3);
+  terminal.println("");
+  terminal.println("Done processing...");
+  terminal.println("");
+  terminal.println("");
   return true;
+}
+
+void saveData(){
+  if(sensorNodeName.equals("N0")){
+    // for(int i = 0; i < 4; i++){
+    //   dataBuffer[i] =
+    // }
+    //dataBuffer[0] = sensorNodeName;
+    dataBuffer[0] = sensor1;
+    dataBuffer[1] = sensor2;
+    dataBuffer[2] = sensor3;
+  }
+  if(sensorNodeName.equals("N1")){
+    //dataBuffer[4] = sensorNodeName;
+    dataBuffer[3] = sensor1;
+    dataBuffer[4] = sensor2;
+    dataBuffer[5] = sensor3;
+  }
+}
+
+void printWeb(){
+  // if(sensorNodeName == "N1"){
+  //   lcd.print(1, 0, "1"); // use: (position X: 0-15, position Y: 0-1, "Message you want to print")
+  // }
+  String n = "0";
+  for(int i; i < 6; i++){
+    terminal.print("seat ");
+    terminal.print(i);
+    terminal.print(": ");
+    if(n.equals(dataBuffer[i])){
+      terminal.println("free");
+    }else{
+      terminal.println("occupied");
+    }
+    terminal.flush();
+  }
 }
 
 /**Function just in case something breaks and we need to check if it is hardware
@@ -205,8 +269,8 @@ bool processData(String dataR){
 void testAgreggator(){
   if(count == 18000){
     count = 0;
-    Serial.println("Testing connection...");
-    Serial.println("");
+    terminal.println("Testing connection...");
+    terminal.println("");
   }
   count++;
   // Set buffer to size of expected message
@@ -218,7 +282,7 @@ void testAgreggator(){
   if (rf_driver.recv(buf, &buflen))
   {
     digitalWrite(LED_RECIEVING, HIGH);
-    Serial.println("Recieveing Data...");
+    terminal.println("Recieveing Data...");
     processData(recievedData);
 
   }

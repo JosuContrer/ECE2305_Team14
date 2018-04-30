@@ -21,7 +21,7 @@ Contibutors Fivos, Anastasia, John
  * Remember to set the 'nodeID' variable with the ID number of the sensor
  */
 //-----------------------Set variables----------------------------
-int nodeID = 3; //Set this value to match the Sensor ID number
+int nodeID = 1; //Set this value to match the Sensor ID number
 
 //----------------------------------------------------------------
 
@@ -106,7 +106,7 @@ void loop()
     case TRANSMITTINGDATA:
       digitalWrite(LED_TRANSMITTING, HIGH);
       Serial.println("Transmitting...");
-      str_out = concatSensorReadings("N1", sensor1.distanceFromPerson(),sensor2.distanceFromPerson(), sensor3.distanceFromPerson());
+      str_out = concatSensorReadings(String(nodeID), sensor1.distanceFromPerson(),sensor2.distanceFromPerson(), sensor3.distanceFromPerson());
       msg = str_out.c_str();
       Serial.println(msg);
       rf_driver.send((uint8_t *)msg, strlen(msg));
@@ -115,7 +115,7 @@ void loop()
       delay(1000);
       //state = LISTENING;
       //TDMA- have to take into account the above delay
-     if(count >= 0){
+     if(count >= 1){
         count = 0;
          state = LISTENING;
        }
@@ -134,7 +134,7 @@ void loop()
 
 //Packages up the data recieved by concatenating the data and adding overhead
 String concatSensorReadings(String nanoName, String oneS, String twoS, String threeS){
-  return nanoName + "," + oneS + "," + twoS + "," + threeS + ",";
+  return "N" + nanoName + "," + oneS + "," + twoS + "," + threeS + ",";
 }
 
 //Function just in case something breaks and we need to check if it is hardware
